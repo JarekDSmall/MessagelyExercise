@@ -1,44 +1,31 @@
+const jwt = require("jsonwebtoken");
 const Router = require("express").Router;
-const Message = require("../models/message");
-const { ensureLoggedIn, ensureCorrectUser } = require("../middleware/auth");
 const router = new Router();
+const User = require("../models/user");
+const { SECRET_KEY } = require("../config");
+const ExpressError = require("../expressError");
 
-router.get("/:id", ensureLoggedIn, async function (req, res, next) {
+router.post("/login", async function (req, res, next) {
   try {
-    const message = await Message.get(req.params.id);
-    
-    if (
-      message.from_user.username !== req.user.username &&
-      message.to_user.username !== req.user.username
-    ) {
-      throw new ExpressError("Unauthorized", 401);
+    let { username, password } = req.body;
+    if (await User.authenticate(username, password)) {
+      let token = jwt.sign({ username }, SECRET_KEY);
+      await User.updateLoginTimestamp(username);
+      return res.json({ token });
+    } else {
+      throw new ExpressError("Invalid username/password", 400);
     }
-
-    return res.json({ message });
   } catch (err) {
     return next(err);
   }
 });
 
-
-
-router.post("/", ensureLoggedIn, async function (req, res, next) {
+router.post("/register", async function (req, res, next) {
   try {
-    const { to_username, body } = req.body;
-    const from_username = req.user.username;
-    const message = await Message.create({ from_username, to_username, body });
-    return res.status(201).json({ message });
-  } catch (err) {
-    return next(err);
-  }
-});
-
-
-
-router.post("/:id/read", ensureCorrectUser, async function (req, res, next) {
-  try {
-    const message = await Message.markRead(req.params.id);
-    return res.json({ message });
+    let { username } = await User.register(req.body);
+    let token = jwt.sign({ username }, SECRET_KEY);
+    await User.updateLoginTimestamp(username);
+    return res.json({ token });
   } catch (err) {
     return next(err);
   }
